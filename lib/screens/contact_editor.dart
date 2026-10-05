@@ -99,6 +99,10 @@ class _ContactEditorState extends State<ContactEditor> {
         await Storage.saveRecent(data);
         _snack('Saved to your contacts.');
         if (mounted) context.go('/home');
+      case SaveResult.downloaded:
+        await Storage.saveRecent(data);
+        _snack('Contact file downloaded. Open it and choose Add to Contacts.');
+        if (mounted) context.go('/home');
       case SaveResult.permissionDenied:
         _snack(
           'Contacts permission was not given. You can allow it in your phone settings, or share the contact file instead.',

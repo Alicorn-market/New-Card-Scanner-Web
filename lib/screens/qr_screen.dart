@@ -1,11 +1,9 @@
-import 'dart:io';
 import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:go_router/go_router.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:share_plus/share_plus.dart';
 import '../models/contact_data.dart';
 import '../services/share_helper.dart';
 import '../services/storage.dart';
@@ -31,10 +29,7 @@ class _QrScreenState extends State<QrScreen> {
           _boundaryKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
       final image = await boundary.toImage(pixelRatio: 3);
       final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/my_card_qr.png');
-      await file.writeAsBytes(bytes!.buffer.asUint8List());
-      await Share.shareXFiles([XFile(file.path, mimeType: 'image/png')],
+      await shareImageBytes(bytes!.buffer.asUint8List(), 'my_card_qr.png',
           text: 'Scan to save my contact');
     } catch (_) {
       if (mounted) {
@@ -134,13 +129,13 @@ class _QrScreenState extends State<QrScreen> {
                 FilledButton.icon(
                   onPressed: _shareImage,
                   icon: const Icon(Icons.qr_code_2),
-                  label: const Text('SHARE QR IMAGE'),
+                  label: Text(kIsWeb ? 'DOWNLOAD QR IMAGE' : 'SHARE QR IMAGE'),
                 ),
                 const SizedBox(height: 10),
                 OutlinedButton.icon(
                   onPressed: () => shareVCard(p),
                   icon: const Icon(Icons.contact_page_outlined),
-                  label: const Text('SHARE CONTACT FILE (.VCF)'),
+                  label: Text(kIsWeb ? 'DOWNLOAD CONTACT FILE (.VCF)' : 'SHARE CONTACT FILE (.VCF)'),
                 ),
               ],
             );
