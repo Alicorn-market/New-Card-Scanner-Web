@@ -9,7 +9,7 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('CardLink')),
+        appBar: AppBar(title: const Text('QARDIVO')),
         body: ListView(
           padding: const EdgeInsets.all(20),
           children: [
