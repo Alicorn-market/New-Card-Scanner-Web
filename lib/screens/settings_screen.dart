@@ -51,7 +51,7 @@ class SettingsScreen extends StatelessWidget {
             ),
             const ListTile(
               leading: Icon(Icons.info_outline),
-              title: Text('CardLink'),
+              title: Text('QARDIVO'),
               subtitle: Text('Version 0.1.0 (MVP)'),
             ),
           ],
