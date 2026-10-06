@@ -12,9 +12,14 @@ class ContactData {
     this.linkedin = '',
     this.address = '',
     this.bio = '',
-  }) : id = id ?? DateTime.now().microsecondsSinceEpoch.toString();
+    List<String>? rawLines,
+  })  : id = id ?? DateTime.now().microsecondsSinceEpoch.toString(),
+        rawLines = rawLines ?? <String>[];
 
   final String id;
+
+  /// Text lines found on a scanned card. Only used on the review screen; never saved.
+  final List<String> rawLines;
   String name, title, company, mobile, whatsapp, phone, email, website, linkedin, address, bio;
 
   Map<String, dynamic> toJson() => {

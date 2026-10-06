@@ -1,8 +1,11 @@
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../demo_data.dart';
+import '../models/contact_data.dart';
 import '../services/card_capture.dart';
+import '../services/card_photo.dart';
 import '../services/card_parser.dart';
 import '../theme.dart';
 
@@ -25,14 +28,36 @@ class _ScanScreenState extends State<ScanScreen> {
   Future<void> _scan({bool fromGallery = false}) async {
     setState(() => _busy = true);
     try {
-      final text = await captureAndReadCard(fromGallery: fromGallery);
-      if (text == null) return;
-      if (!mounted) return;
-      if (text.trim().length < 5) {
-        _msg('We could not read any text. Try better light, hold the phone steady, and fill the frame with the card.');
-        return;
+      ContactData data;
+      if (kIsWeb) {
+        // 1. take or choose a photo, 2. frame the card, 3. read it
+        final photo = await pickPhotoBytes(fromGallery: fromGallery);
+        if (photo == null) return;
+        if (!mounted) return;
+        setState(() => _busy = false);
+        final cropped = await context.push<Uint8List>('/crop', extra: photo);
+        if (cropped == null) return;
+        if (!mounted) return;
+        setState(() => _busy = true);
+        final result = await readCardPhoto(cropped);
+        if (!mounted) return;
+        if (result.text.trim().length < 5) {
+          _msg('We could not read any text. Try better light, hold the phone steady, and frame only the card.');
+          return;
+        }
+        data = CardParser.parseResult(result);
+      } else {
+        final text = await captureAndReadCard(fromGallery: fromGallery);
+        if (text == null) return;
+        if (!mounted) return;
+        if (text.trim().length < 5) {
+          _msg('We could not read any text. Try better light, hold the phone steady, and fill the frame with the card.');
+          return;
+        }
+        data = CardParser.parse(text);
       }
-      context.push('/review', extra: CardParser.parse(text));
+      if (!mounted) return;
+      context.push('/review', extra: data);
     } catch (e) {
       if (mounted) {
         final detail = e.toString().replaceFirst('Exception: ', '');

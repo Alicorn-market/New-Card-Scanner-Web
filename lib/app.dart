@@ -1,7 +1,9 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'models/contact_data.dart';
 import 'screens/contact_editor.dart';
+import 'screens/crop_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/my_card_screen.dart';
 import 'screens/qr_screen.dart';
@@ -47,6 +49,10 @@ GoRouter _buildRouter(String initial) => GoRouter(
           ),
         ),
         GoRoute(path: '/qr', builder: (_, __) => const QrScreen()),
+        GoRoute(
+          path: '/crop',
+          builder: (_, state) => CropScreen(imageBytes: state.extra as Uint8List),
+        ),
       ],
     );
 

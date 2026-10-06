@@ -128,6 +128,47 @@ class _ContactEditorState extends State<ContactEditor> {
     context.pop();
   }
 
+  static const _placeOptions = <(String, String)>[
+    ('name', 'Full name'),
+    ('title', 'Designation'),
+    ('company', 'Company'),
+    ('mobile', 'Mobile'),
+    ('phone', 'Telephone'),
+    ('whatsapp', 'WhatsApp'),
+    ('email', 'Email'),
+    ('website', 'Website'),
+    ('linkedin', 'LinkedIn'),
+    ('address', 'Address'),
+  ];
+
+  Future<void> _place(String text) async {
+    final key = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text('Put \u201c$text\u201d in\u2026',
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+            ),
+            for (final o in _placeOptions)
+              ListTile(title: Text(o.$2), onTap: () => Navigator.pop(ctx, o.$1)),
+          ],
+        ),
+      ),
+    );
+    if (key == null) return;
+    final ctl = _c[key]!;
+    if (key == 'address' && ctl.text.trim().isNotEmpty) {
+      ctl.text = '${ctl.text.trim()}, $text';
+    } else {
+      ctl.text = text;
+    }
+    setState(() {});
+  }
+
   Widget _f(String key, String label,
           {TextInputType? kb, int lines = 1, String? Function(String?)? validator, IconData? icon}) =>
       Padding(
@@ -141,6 +182,11 @@ class _ContactEditorState extends State<ContactEditor> {
           decoration: InputDecoration(
             labelText: label,
             prefixIcon: icon == null ? null : Icon(icon),
+            suffixIcon: IconButton(
+              icon: const Icon(Icons.clear, size: 18),
+              tooltip: 'Clear',
+              onPressed: () => _c[key]!.clear(),
+            ),
           ),
         ),
       );
@@ -180,6 +226,43 @@ class _ContactEditorState extends State<ContactEditor> {
                   kb: TextInputType.multiline, lines: 3, icon: Icons.location_on_outlined),
               if (_isProfile)
                 _f('bio', 'Short bio', kb: TextInputType.multiline, lines: 4, icon: Icons.notes),
+              if (!_isProfile && widget.initial.rawLines.isNotEmpty)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF3F6F8),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Text found on the card',
+                          style: TextStyle(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'If a field above is wrong, tap a line here and choose where it belongs.',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final t in widget.initial.rawLines)
+                            ActionChip(
+                              label: ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 260),
+                                child: Text(t, overflow: TextOverflow.ellipsis),
+                              ),
+                              onPressed: () => _place(t),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 8),
               if (_isProfile)
                 FilledButton(onPressed: _saveProfile, child: const Text('SAVE MY CARD'))

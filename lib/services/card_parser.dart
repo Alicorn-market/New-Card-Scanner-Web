@@ -1,7 +1,25 @@
+import 'dart:math' as math;
 import '../models/contact_data.dart';
+import 'ocr_result.dart';
 
-/// Turns raw OCR text into contact fields using simple, readable rules.
+class _Item {
+  _Item(this.text, this.height, this.top);
+  final String text;
+  final double height; // text size in the photo (0 = unknown)
+  final double top;
+}
+
+class _Cand {
+  _Cand(this.text, this.height, this.top, this.order);
+  String text;
+  final double height;
+  final double top;
+  int order;
+}
+
+/// Turns the text read from a card into contact fields using readable rules.
 class CardParser {
+  // ---------- patterns ----------
   static final _emailRe = RegExp(r'[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}', caseSensitive: false);
   static final _linkedinRe =
       RegExp(r'(?:https?://)?(?:[a-z]{2,3}\.)?linkedin\.com/[^\s|,;]+', caseSensitive: false);
@@ -11,34 +29,62 @@ class CardParser {
   static final _phoneRe = RegExp(r'\+?\(?\d[\d\s\-().]{6,}\d');
 
   static final _labelRe = RegExp(
-      r'\b(?:e-?mail|mobile|mob|cell|telephone|tel|phone|fax|website|linkedin|whats\s?app)\b\s*(?:[:.\-]|$)',
+      r'\b(?:e-?mail|mobile|mob|cell|telephone|tel|phone|fax|website|linkedin|whats\s?app|address|addr|add)\b\s*(?:[:.\-]|$)',
       caseSensitive: false);
-  static final _shortLabelRe = RegExp(r'\b[mtfew]\s*:', caseSensitive: false);
+  static final _shortLabelRe = RegExp(r'\b[mtfewa]\s*:', caseSensitive: false);
   static final _edgeRe = RegExp(r'^[\s,;:|\-–•]+|[\s,;:|\-–•]+$');
 
   static final _strongCompany = RegExp(
       r'\b(?:pvt|private|ltd|limited|llp|inc|llc|corp|corporation|gmbh|plc|co)\b',
       caseSensitive: false);
   static final _weakCompany = RegExp(
-      r'\b(?:solutions|technologies|technology|industries|enterprises|systems|associates|medical|healthcare|labs|laboratories|hospital|clinic|services|trading|traders|group|consultancy|consulting|studio|agency|university|institute|foundation|bank|motors|electricals|constructions|builders)\b',
+      r'\b(?:solutions|technologies|technology|industries|enterprises|systems|associates|medical|healthcare|labs|laboratories|hospital|clinic|services|trading|traders|group|consultancy|consulting|studio|agency|university|institute|foundation|bank|motors|electricals|constructions|builders|pharma|pharmaceuticals|exports|imports|infotech|software|logistics|textiles|agencies|distributors|marketing)\b',
       caseSensitive: false);
   static final _titleRe = RegExp(
-      r'\b(?:director|manager|ceo|cto|cfo|coo|cmo|founder|co-?founder|president|vice president|vp|engineer|consultant|partner|executive|officer|head|lead|sales|surgeon|physician|specialist|analyst|associate|proprietor|owner|architect|designer|developer|advisor|chairman|chairperson|managing|md|supervisor|coordinator|representative|professor|lecturer|principal|accountant|attorney|advocate)\b',
+      r'\b(?:director|manager|ceo|cto|cfo|coo|cmo|founder|co-?founder|president|vice president|vp|engineer|consultant|partner|executive|officer|head|lead|sales|surgeon|physician|specialist|analyst|associate|proprietor|owner|architect|designer|developer|advisor|chairman|chairperson|managing|md|supervisor|coordinator|representative|professor|lecturer|principal|accountant|attorney|advocate|proprietress|secretary|treasurer|trustee)\b',
       caseSensitive: false);
   static final _addressWordsRe = RegExp(
-      r'\b(?:road|street|floor|flr|building|bldg|nagar|avenue|ave|lane|suite|plot|sector|near|opp|opposite|block|tower|towers|po box|district|dist|junction|colony|kerala|india|usa|uae|uk|singapore)\b',
+      r'\b(?:road|street|floor|flr|building|bldg|nagar|avenue|ave|lane|suite|plot|sector|near|opp|opposite|block|tower|towers|po box|district|dist|junction|colony|house|apartment|apartments|complex|cross|layout|market|bypass|highway|pincode|pin)\b',
+      caseSensitive: false);
+  static final _cityRe = RegExp(
+      r'\b(?:kerala|tamil nadu|karnataka|maharashtra|delhi|mumbai|bangalore|bengaluru|chennai|kochi|cochin|ernakulam|thiruvananthapuram|trivandrum|kozhikode|calicut|thrissur|kollam|kannur|hyderabad|telangana|pune|kolkata|gujarat|ahmedabad|rajasthan|jaipur|uttar pradesh|punjab|goa|india|dubai|uae|usa|uk|singapore)\b',
       caseSensitive: false);
   static final _postcodeRe = RegExp(r'\b\d{5,6}\b');
   static final _nameRe = RegExp(r"^[\p{L}][\p{L}.'\- ]*$", unicode: true);
 
-  static ContactData parse(String raw) {
-    final c = ContactData();
-    final lines =
-        raw.split(RegExp(r'[\r\n]+')).map((l) => l.trim()).where((l) => l.isNotEmpty);
-    final leftovers = <String>[];
+  static final _honorificRe =
+      RegExp(r'^(?:mr|mrs|ms|miss|dr|prof|shri|smt|sri|er)\.?\s+', caseSensitive: false);
+  static final _lonePrefixRe =
+      RegExp(r'^(?:mr|mrs|ms|miss|dr|prof|shri|smt|sri|er)\.?$', caseSensitive: false);
+  static final _dropHonorificRe =
+      RegExp(r'^(?:mr|mrs|ms|miss|shri|smt|sri)\.?\s+', caseSensitive: false);
 
-    for (final line in lines) {
-      var rest = line;
+  // ---------- entry points ----------
+  /// From plain text (phone scanner).
+  static ContactData parse(String raw) {
+    final items = raw
+        .split(RegExp(r'[\r\n]+'))
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .map((l) => _Item(l, 0, 0))
+        .toList();
+    return _run(items);
+  }
+
+  /// From text pieces that know where they sit on the card (web scanner).
+  static ContactData parseResult(OcrResult r) {
+    if (r.lines.isEmpty) return parse(r.text);
+    return _run([for (final l in r.lines) _Item(l.text, l.height, l.top)]);
+  }
+
+  // ---------- main work ----------
+  static ContactData _run(List<_Item> items) {
+    final c = ContactData();
+    final cands = <_Cand>[];
+
+    // 1. Pull out the easy things: email, links, phone numbers.
+    for (final it in items) {
+      var rest = it.text;
 
       final em = _emailRe.firstMatch(rest);
       if (em != null) {
@@ -67,52 +113,153 @@ class CardParser {
       rest = rest.replaceAll(_phoneRe, ' ');
 
       final cleaned = _clean(rest);
-      final letters = cleaned.replaceAll(RegExp(r'[^\p{L}]', unicode: true), '');
-      if (letters.length >= 2) leftovers.add(cleaned);
+      if (_usable(cleaned)) cands.add(_Cand(cleaned, it.height, it.top, cands.length));
     }
 
-    final addressParts = <String>[];
-    final others = <String>[];
-    for (final l in leftovers) {
-      if (c.company.isEmpty && _strongCompany.hasMatch(l)) {
-        c.company = l;
-      } else if (c.title.isEmpty && _titleRe.hasMatch(l)) {
-        c.title = l;
-      } else if (_looksLikeAddress(l)) {
-        addressParts.add(l);
-      } else {
-        others.add(l);
+    // 2. A lone "Mr." / "Dr." belongs to the name line that follows it.
+    for (var i = 0; i < cands.length; i++) {
+      if (_lonePrefixRe.hasMatch(cands[i].text)) {
+        if (i + 1 < cands.length && _nameLike(cands[i + 1].text)) {
+          cands[i + 1].text = '${cands[i].text} ${cands[i + 1].text}';
+        }
+        cands.removeAt(i);
+        i--;
       }
     }
+    for (var i = 0; i < cands.length; i++) {
+      cands[i].order = i;
+    }
 
-    String? nameLine;
-    for (final l in others) {
-      final words = l.split(RegExp(r'\s+'));
-      if (_nameRe.hasMatch(l) &&
-          words.length >= 2 &&
-          words.length <= 4 &&
-          !_weakCompany.hasMatch(l)) {
-        nameLine = l;
+    // 3. Decide which line is the company, designation, name and address.
+    final used = <_Cand>{};
+    _Cand? company, title, name;
+
+    for (final x in cands) {
+      if (_strongCompany.hasMatch(x.text)) {
+        company = x;
         break;
       }
     }
-    nameLine ??= others.isNotEmpty ? others.first : null;
-    if (nameLine != null) {
-      c.name = _tidyName(nameLine);
-      others.remove(nameLine);
+    if (company != null) used.add(company);
+
+    for (final x in cands) {
+      if (used.contains(x)) continue;
+      if (_titleRe.hasMatch(x.text) && _addrScore(x.text) < 2) {
+        title = x;
+        break;
+      }
+    }
+    if (title != null) used.add(title);
+
+    final nameCands = cands.where((x) => !used.contains(x) && _nameLike(x.text)).toList();
+    if (nameCands.isNotEmpty) {
+      final maxH = nameCands.map((x) => x.height).reduce(math.max);
+      final titleOrder = title?.order;
+      double score(_Cand x) {
+        final words = x.text.split(RegExp(r'\s+')).length;
+        var s = 0.0;
+        if (_honorificRe.hasMatch(x.text)) s += 3;
+        if (words >= 2 && words <= 3) s += 2;
+        s -= x.order * 0.15;
+        if (maxH > 0) s += 3 * (x.height / maxH);
+        if (titleOrder != null && x.order == titleOrder - 1) s += 1.5;
+        return s;
+      }
+
+      nameCands.sort((a, b) => score(b).compareTo(score(a)));
+      name = nameCands.first;
+      used.add(name);
+    }
+    if (name == null) {
+      for (final x in cands) {
+        if (!used.contains(x) && _addrScore(x.text) < 2) {
+          name = x;
+          used.add(x);
+          break;
+        }
+      }
     }
 
-    if (c.company.isEmpty && others.isNotEmpty) {
-      final weak = others.where((l) => _weakCompany.hasMatch(l));
-      c.company = weak.isNotEmpty ? weak.first : others.first;
+    if (company == null) {
+      final rest = cands.where((x) => !used.contains(x) && _addrScore(x.text) < 2).toList();
+      _Cand? pick;
+      for (final x in rest) {
+        if (_weakCompany.hasMatch(x.text)) {
+          pick = x;
+          break;
+        }
+      }
+      if (pick == null && rest.isNotEmpty) {
+        pick = rest.reduce((a, b) => b.height > a.height ? b : a);
+      }
+      if (pick != null) {
+        company = pick;
+        used.add(pick);
+      }
     }
 
-    c.address = addressParts.join(', ');
+    // Address: lines that look like one, plus the lines right next to them.
+    final addr = <_Cand>{};
+    for (final x in cands) {
+      if (!used.contains(x) && _addrScore(x.text) >= 2) addr.add(x);
+    }
+    var changed = true;
+    var guard = 0;
+    while (changed && guard++ < 4) {
+      changed = false;
+      for (final x in cands) {
+        if (used.contains(x) || addr.contains(x)) continue;
+        final near = addr.any((a) => _near(a, x));
+        if (near && (_addrScore(x.text) >= 1 || RegExp(r'[\d,]').hasMatch(x.text))) {
+          addr.add(x);
+          changed = true;
+        }
+      }
+    }
+
+    if (name != null) c.name = _finalName(name.text);
+    if (title != null) c.title = _tidy(title.text);
+    if (company != null) c.company = _tidy(company.text);
+    c.address = cands.where(addr.contains).map((x) => _tidy(x.text)).join(', ');
+
+    c.rawLines.addAll(cands.map((x) => x.text).toSet());
     return c;
   }
 
-  static bool _looksLikeAddress(String l) =>
-      _addressWordsRe.hasMatch(l) || _postcodeRe.hasMatch(l) || ','.allMatches(l).length >= 2;
+  // ---------- helpers ----------
+  static bool _near(_Cand a, _Cand b) {
+    if (a.height > 0 && b.height > 0) {
+      return (a.top - b.top).abs() < 2.4 * math.max(a.height, b.height);
+    }
+    return (a.order - b.order).abs() == 1;
+  }
+
+  static int _addrScore(String s) {
+    var n = 0;
+    if (_addressWordsRe.hasMatch(s)) n += 2;
+    if (_postcodeRe.hasMatch(s)) n += 2;
+    if (_cityRe.hasMatch(s)) n += 1;
+    if (','.allMatches(s).length >= 2) n += 1;
+    if (RegExp(r'^\d').hasMatch(s)) n += 1;
+    return n;
+  }
+
+  static bool _nameLike(String s) {
+    final t = s.replaceFirst(_honorificRe, '').trim();
+    if (t.isEmpty) return false;
+    if (t.split(RegExp(r'\s+')).length > 4) return false;
+    if (!_nameRe.hasMatch(t)) return false;
+    if (_titleRe.hasMatch(t) || _strongCompany.hasMatch(t) || _weakCompany.hasMatch(t)) return false;
+    if (_addrScore(t) >= 2) return false;
+    return true;
+  }
+
+  static bool _usable(String s) {
+    if (s.isEmpty) return false;
+    final letters = RegExp(r'\p{L}', unicode: true).allMatches(s).length;
+    final alnum = RegExp(r'[\p{L}\p{N}]', unicode: true).allMatches(s).length;
+    return letters >= 2 && alnum >= 0.6 * s.length;
+  }
 
   static String _labelBefore(String before) {
     final b = before.toLowerCase();
@@ -125,6 +272,18 @@ class CardParser {
       return 'phone';
     }
     return '';
+  }
+
+  /// Indian mobile numbers are 10 digits starting with 6-9 (with or without +91).
+  static bool _looksMobile(String number) {
+    var d = number.replaceAll(RegExp(r'\D'), '');
+    if (d.startsWith('91') && d.length == 12) d = d.substring(2);
+    return d.length == 10 && '6789'.contains(d[0]);
+  }
+
+  static bool _looksLandline(String number) {
+    final d = number.replaceAll(RegExp(r'\D'), '');
+    return d.startsWith('0') && !d.startsWith('00');
   }
 
   static void _assignPhone(ContactData c, String n, String label) {
@@ -150,7 +309,11 @@ class CardParser {
         }
         return;
       default:
-        if (c.mobile.isEmpty) {
+        if (_looksLandline(n) && c.phone.isEmpty) {
+          c.phone = n;
+        } else if (_looksMobile(n) && c.mobile.isEmpty) {
+          c.mobile = n;
+        } else if (c.mobile.isEmpty) {
           c.mobile = n;
         } else if (c.phone.isEmpty) {
           c.phone = n;
@@ -159,9 +322,17 @@ class CardParser {
   }
 
   static String _clean(String s) {
-    var out = s.replaceAll(_labelRe, ' ').replaceAll(_shortLabelRe, ' ');
+    var out = s.replaceAll(RegExp(r'[|¦_~]'), ' ');
+    out = out.replaceAll(_labelRe, ' ').replaceAll(_shortLabelRe, ' ');
     out = out.replaceAll(_edgeRe, '');
     return out.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+  }
+
+  static String _tidy(String s) => s.replaceAll(_edgeRe, '').replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+
+  static String _finalName(String s) {
+    final out = s.replaceFirst(_dropHonorificRe, '').replaceAll(RegExp(r'\s{2,}'), ' ');
+    return _tidyName(_tidy(out));
   }
 
   static String _tidyName(String s) {
