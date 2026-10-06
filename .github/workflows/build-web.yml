@@ -29,11 +29,12 @@ jobs:
           flutter create --platforms=web --org com.cardlink --project-name cardlink /tmp/scaffold_web
           cp -r /tmp/scaffold_web/web ./web
 
-      - name: Add the reading engine, app name and colour
+            - name: Add the reading engine, app name and colour
         run: |
           sed -i 's|</head>|  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>\n</head>|' web/index.html
-          sed -i 's|<title>[^<]*</title>|<title>CardLink</title>|' web/index.html
-          sed -i 's/"name": "[^"]*"/"name": "CardLink"/; s/"short_name": "[^"]*"/"short_name": "CardLink"/; s/"theme_color": "[^"]*"/"theme_color": "#0B3C5D"/' web/manifest.json
+          sed -i 's|<title>[^<]*</title>|<title>QARDIVO</title>|' web/index.html
+          sed -i 's|<meta name="apple-mobile-web-app-title" content="[^"]*">|<meta name="apple-mobile-web-app-title" content="QARDIVO">|' web/index.html
+          sed -i 's/"name": "[^"]*"/"name": "QARDIVO"/; s/"short_name": "[^"]*"/"short_name": "QARDIVO"/; s/"theme_color": "[^"]*"/"theme_color": "#0B3C5D"/' web/manifest.json
           grep -n tesseract web/index.html
           cat web/manifest.json
 
