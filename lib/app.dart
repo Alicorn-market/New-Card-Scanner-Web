@@ -69,7 +69,7 @@ class _CardLinkAppState extends State<CardLinkApp> {
 
   @override
   Widget build(BuildContext context) => MaterialApp.router(
-        title: 'CardLink',
+        title: 'QARDIVO',
         theme: appTheme,
         debugShowCheckedModeBanner: false,
         routerConfig: _router,
